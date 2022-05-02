@@ -1,4 +1,4 @@
-module parallel
+module Tobiichi
 
 go 1.13
 
