@@ -1,4 +1,4 @@
-module Tobiichi
+module github.com/EAFA0/Tobiichi
 
 go 1.13
 

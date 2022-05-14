@@ -1,7 +1,7 @@
 package example
 
 import (
-	"Tobiichi/parallel"
+	"github.com/EAFA0/Tobiichi/parallel"
 	"context"
 	"fmt"
 	"sync"
