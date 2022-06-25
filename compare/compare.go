@@ -92,7 +92,7 @@ func (c Comparator) Equal(source, target interface{}) bool {
 		s = c.mapField(s)
 	}
 
-	sStr, tStr := c.dumpFileds(s).Json(), c.dumpFileds(t).Json()
+	sStr, tStr := c.dumpFields(s).Json(), c.dumpFields(t).Json()
 	sTemp := reflect.New(tType).Elem().Interface()
 	tTemp := reflect.New(tType).Elem().Interface()
 
@@ -106,7 +106,7 @@ func (c Comparator) Equal(source, target interface{}) bool {
 	return reflect.DeepEqual(sTemp, tTemp)
 }
 
-func (c Comparator) dumpFileds(source Parser) Parser {
+func (c Comparator) dumpFields(source Parser) Parser {
 	if len(c.include) > 0 {
 		empty := c.parser.Load(None{})
 		for path := range c.include {

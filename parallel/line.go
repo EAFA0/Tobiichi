@@ -35,7 +35,7 @@ func (a *Line) Run(ctx context.Context, supplier ParamsSupplier, action func(int
 			}()
 
 			for params := range supplier {
-				if a.isCanceld(ctx) {
+				if a.isCanceled(ctx) {
 					a.anyErr = errors.New("context canceled")
 				}
 
@@ -65,7 +65,7 @@ func (a *Line) Error() string {
 	return a.anyErr.Error()
 }
 
-func (a *Line) isCanceld(ctx context.Context) bool {
+func (a *Line) isCanceled(ctx context.Context) bool {
 	select {
 	case <-ctx.Done():
 		return true
