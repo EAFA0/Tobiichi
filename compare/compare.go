@@ -12,11 +12,10 @@ import (
 type None struct{}
 
 type Parser interface {
-	Load(interface{}) Parser
-	// Get Get the value of target path from object
+	// Parse covert object to Parser
+	Parse(interface{}) Parser
 	Get(path string) interface{}
-	// Set Set the target path of object to value
-	Set(path string, value interface{})
+	Set(path string, val interface{})
 	// Json covert object to json string
 	Json() string
 }
@@ -53,7 +52,7 @@ type DefaultParser struct {
 	temp gjson.Result
 }
 
-func (p DefaultParser) Load(obj interface{}) DefaultParser {
+func (p DefaultParser) Parse(obj interface{}) Parser {
 	bytes, _ := json.Marshal(obj)
 	temp := gjson.ParseBytes(bytes)
 	return DefaultParser{temp: temp}
@@ -66,11 +65,33 @@ func (p DefaultParser) Get(path string) interface{} {
 var sjsonOpt = &sjson.Options{ReplaceInPlace: true}
 
 func (p DefaultParser) Set(path string, value interface{}) {
-	if val, ok := value.(gjson.Result); ok {
-		value = val.String()
+	// set value if value is not gjson.Result
+	if val, ok := value.(gjson.Result); !ok {
+		temp, _ := sjson.SetOptions(p.temp.Raw, path, val, sjsonOpt)
+		p.temp = gjson.Parse(temp)
+		return
 	}
-	temp, _ := sjson.SetOptions(p.temp.Raw, path, value, sjsonOpt)
+	val, ok := value.(gjson.Result)
+	paths := val.Paths(p.temp.Raw)
+
+	// is a complex path
+	if ok && val.IsArray() && len(paths) != 0 {
+		// set value in loop
+		for _, vPath := range val.Paths(p.temp.Raw) {
+			raw, item := p.temp.Raw, p.temp.Get(vPath)
+			// ignore error
+			temp, _ := sjson.SetOptions(raw, vPath, item, sjsonOpt)
+			p.temp = gjson.Parse(temp)
+		}
+	}
+
+	// if val is a simple value
+	temp, _ := sjson.SetOptions(p.temp.Raw, path, val.Str, sjsonOpt)
 	p.temp = gjson.Parse(temp)
+}
+
+func (p DefaultParser) Json() string {
+	return p.temp.Raw
 }
 
 func NewComparator(parser Parser, opts ...Option) Comparator {
@@ -85,16 +106,15 @@ func NewComparator(parser Parser, opts ...Option) Comparator {
 }
 
 func (c Comparator) Equal(source, target interface{}) bool {
-	s, t := c.parser.Load(source), c.parser.Load(target)
+	s, t := c.parser.Parse(source), c.parser.Parse(target)
 
 	tType := reflect.TypeOf(target)
 	if len(c.pathMap) != 0 {
 		s = c.mapField(s)
 	}
 
-	sStr, tStr := c.dumpFields(s).Json(), c.dumpFields(t).Json()
-	sTemp := reflect.New(tType).Elem().Interface()
-	tTemp := reflect.New(tType).Elem().Interface()
+	sStr, sTemp := c.dumpFields(s).Json(), reflect.New(tType).Interface()
+	tStr, tTemp := c.dumpFields(t).Json(), reflect.New(tType).Interface()
 
 	if err := json.Unmarshal([]byte(sStr), sTemp); err != nil {
 		return false
@@ -108,7 +128,7 @@ func (c Comparator) Equal(source, target interface{}) bool {
 
 func (c Comparator) dumpFields(source Parser) Parser {
 	if len(c.include) > 0 {
-		empty := c.parser.Load(None{})
+		empty := c.parser.Parse(None{})
 		for path := range c.include {
 			empty.Set(path, source.Get(path))
 		}
