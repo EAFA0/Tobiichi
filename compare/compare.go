@@ -12,11 +12,12 @@ import (
 type None struct{}
 
 type Parser interface {
-	Load(interface{}) Parser
-	// Get Get the value of target path from object
+	// Parse covert object to Parser
+	Parse(interface{}) Parser
+	// Copy
 	Get(path string) interface{}
-	// Set Set the target path of object to value
-	Set(path string, value interface{})
+	// Delete
+	Set(path string, val interface{})
 	// Json covert object to json string
 	Json() string
 }
@@ -53,7 +54,7 @@ type DefaultParser struct {
 	temp gjson.Result
 }
 
-func (p DefaultParser) Load(obj interface{}) DefaultParser {
+func (p DefaultParser) Parse(obj interface{}) Parser {
 	bytes, _ := json.Marshal(obj)
 	temp := gjson.ParseBytes(bytes)
 	return DefaultParser{temp: temp}
@@ -66,11 +67,27 @@ func (p DefaultParser) Get(path string) interface{} {
 var sjsonOpt = &sjson.Options{ReplaceInPlace: true}
 
 func (p DefaultParser) Set(path string, value interface{}) {
-	if val, ok := value.(gjson.Result); ok {
-		value = val.String()
+	// set value if value is not gjson.Result
+	if val, ok := value.(gjson.Result); !ok {
+		temp, _ := sjson.SetOptions(p.temp.Raw, path, val, sjsonOpt)
+		p.temp = gjson.Parse(temp)
 	}
-	temp, _ := sjson.SetOptions(p.temp.Raw, path, value, sjsonOpt)
+	val := value.(gjson.Result)
+	paths := val.Paths(p.temp.Raw)
+
+	// is a complex path
+	if val.IsArray() && len(paths) != 0 {
+		for _, path := range val.Paths(p.temp.Raw) {
+			p.temp = gjson.Parse(temp)
+		}
+	}
+
+	temp, _ := sjson.SetOptions(p.temp.Raw, path, val.Str, sjsonOpt)
 	p.temp = gjson.Parse(temp)
+}
+
+func (p DefaultParser) Json() string {
+	return p.temp.Raw
 }
 
 func NewComparator(parser Parser, opts ...Option) Comparator {
