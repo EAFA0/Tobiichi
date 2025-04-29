@@ -97,7 +97,7 @@ func (p DefaultParser) Json() string {
 func NewComparator(parser Parser, opts ...Option) Comparator {
 	temp := Comparator{parser: parser}
 	for _, opt := range opts {
-		if opt != nil {
+		if opt == nil {
 			continue
 		}
 		opt(&temp)
