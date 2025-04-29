@@ -45,31 +45,19 @@ type ListItem[K Ordered, V any] struct {
 }
 
 func findLeftBound[K Ordered, V any](l []ListItem[K, V], key K) int {
-	low, high := 0, len(l)-1
-	for low <= high {
-		mid := (low + high) / 2
-		if l[mid].Key < key {
-			low = mid + 1
-		} else {
-			high = mid - 1
-		}
-	}
-
-	return low
+	// 使用 sort.Search 查找第一个 Key >= key 的元素的索引
+	return sort.Search(len(l), func(i int) bool {
+		return l[i].Key >= key
+	})
 }
 
 func findRightBound[K Ordered, V any](l []ListItem[K, V], key K) int {
-	low, high := 0, len(l)-1
-	for low <= high {
-		mid := (low + high) / 2
-		if l[mid].Key > key {
-			high = mid - 1
-		} else {
-			low = mid + 1
-		}
-	}
-
-	return high
+	// 使用 sort.Search 查找第一个 Key > key 的元素的索引
+	idx := sort.Search(len(l), func(i int) bool {
+		return l[i].Key > key
+	})
+	// 返回前一个元素的索引，即最后一个 Key <= key 的元素的索引
+	return idx - 1
 }
 
 // PickOneWrapper 将单值查找函数包装为多值返回函数。
