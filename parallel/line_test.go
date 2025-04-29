@@ -11,7 +11,7 @@ import (
 var emptyVal = struct{}{}
 
 func TestWait(t *testing.T) {
-	line, supplier := NewLine(2), make(chan interface{})
+	line, supplier := NewLine[any](2), make(chan interface{})
 
 	line.Run(context.Background(), supplier, func(obj interface{}) error {
 		return nil
@@ -25,7 +25,7 @@ func TestWait(t *testing.T) {
 }
 
 func TestCtxCancel(t *testing.T) {
-	line, supplier := NewLine(1), make(chan interface{})
+	line, supplier := NewLine[any](1), make(chan interface{})
 
 	ctx, cancel := context.WithCancel(context.Background())
 	line.Run(ctx, supplier, func(obj interface{}) error {
@@ -42,7 +42,7 @@ func TestCtxCancel(t *testing.T) {
 }
 
 func TestError(t *testing.T) {
-	line, supplier := NewLine(1), make(chan interface{})
+	line, supplier := NewLine[any](1), make(chan interface{})
 
 	msg := "errmsg"
 	line.Run(context.Background(), supplier, func(obj interface{}) error {
@@ -57,7 +57,7 @@ func TestError(t *testing.T) {
 }
 
 func TestPanic(t *testing.T) {
-	line, supplier := NewLine(1), make(chan interface{})
+	line, supplier := NewLine[any](1), make(chan interface{})
 
 	msg := "panic msg"
 	line.Run(context.Background(), supplier, func(obj interface{}) error {
