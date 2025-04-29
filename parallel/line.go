@@ -7,49 +7,60 @@ import (
 	"time"
 )
 
-type ParamsSupplier[T any] <-chan T
-
-type Line[T any] struct {
-	done   chan struct{}
+type Line struct {
 	size   uint64
+	done   chan struct{}
 	anyErr error
+	cancel <-chan struct{}
 }
 
-func NewLine[T any](size uint64) Line[T] {
-	return Line[T]{
+func NewLine(size uint64) Line {
+	return Line{
 		done: make(chan struct{}, size),
 		size: size,
 	}
 }
 
-// Run continue to run until any of the following conditions are met.
-// - context canceled
-// - supplier closed
-// - action return error or panic
-func (a *Line[T]) Run(ctx context.Context, supplier ParamsSupplier[T], action func(T) error) {
-	for i := uint64(0); i < a.size; i++ {
+func NewLineWithContext(ctx context.Context, size uint64) Line {
+	return Line{
+		done:   make(chan struct{}, size),
+		size:   size,
+		cancel: ctx.Done(),
+	}
+}
+
+func NewLineWithCancel(size uint64, cancel <-chan struct{}) Line {
+	return Line{
+		done:   make(chan struct{}, size),
+		size:   size,
+		cancel: cancel,
+	}
+}
+
+func Run[T any](line *Line, supplier <-chan T, action func(T) error) {
+	for i := uint64(0); i < line.size; i++ {
 		go func() {
 			defer func() {
 				if msg := recover(); msg != nil {
-					a.anyErr = fmt.Errorf("%v", msg)
+					line.anyErr = fmt.Errorf("%v", msg)
 				}
-				a.done <- struct{}{}
+				line.done <- struct{}{}
 			}()
 
 			for params := range supplier {
-				if a.isCanceled(ctx) {
-					a.anyErr = errors.New("context canceled")
+				if isCanceled(line.cancel) {
+					line.anyErr = errors.New("action canceled")
 				}
 
-				if a.anyErr != nil {
-					a.drop(supplier)
+				if line.anyErr != nil {
+					dropChan(supplier)
 					return
 				}
 
 				err := action(params)
 
 				if err != nil {
-					a.anyErr = err
+					line.anyErr = err
 				}
 			}
 		}()
@@ -57,14 +68,14 @@ func (a *Line[T]) Run(ctx context.Context, supplier ParamsSupplier[T], action fu
 }
 
 // Wait until finished
-func (a *Line[T]) Wait() error {
+func (a *Line) Wait() error {
 	<-a.done
 	return a.anyErr
 }
 
 // WaitTime waits for the process to finish within the given duration.
 // If the process does not finish within the duration, it returns a timeout error.
-func (a *Line[T]) WaitTime(timeout time.Duration) error {
+func (a *Line) WaitTime(timeout time.Duration) error {
 	select {
 	case <-a.done:
 		return a.anyErr
@@ -74,21 +85,21 @@ func (a *Line[T]) WaitTime(timeout time.Duration) error {
 }
 
 // Error return anyErr's value
-func (a *Line[T]) Error() string {
+func (a *Line) Error() string {
 	return a.anyErr.Error()
 }
 
-func (a *Line[T]) isCanceled(ctx context.Context) bool {
+func isCanceled(cancel <-chan struct{}) bool {
 	select {
-	case <-ctx.Done():
+	case <-cancel:
 		return true
 	default:
 		return false
 	}
 }
 
-// drop clean the paramsSupplier
-func (a *Line[T]) drop(supplier ParamsSupplier[T]) {
+// dropChan clean the chan avoid block
+func dropChan[T any](supplier <-chan T) {
 	for range supplier {
 	}
 }
