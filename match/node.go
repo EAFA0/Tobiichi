@@ -4,6 +4,7 @@
 package tree
 
 import (
+	"cmp"
 	"sort"
 )
 
@@ -31,27 +32,20 @@ func (n DataNode[Q, D]) SetNext(next BuildNode[Q, D]) {
 	// 数据节点无下一节点
 }
 
-type Ordered interface {
-	~int | ~int8 | ~int16 | ~int32 | ~int64 |
-		~uint | ~uint8 | ~uint16 | ~uint32 | ~uint64 | ~uintptr |
-		~float32 | ~float64 |
-		~string
-}
-
 // ListItem 定义了列表项的结构，包含一个可排序的键和一个任意类型的值。
-type ListItem[K Ordered, V any] struct {
+type ListItem[K cmp.Ordered, V any] struct {
 	Key K
 	Val V
 }
 
-func findLeftBound[K Ordered, V any](l []ListItem[K, V], key K) int {
+func findLeftBound[K cmp.Ordered, V any](l []ListItem[K, V], key K) int {
 	// 使用 sort.Search 查找第一个 Key >= key 的元素的索引
 	return sort.Search(len(l), func(i int) bool {
 		return l[i].Key >= key
 	})
 }
 
-func findRightBound[K Ordered, V any](l []ListItem[K, V], key K) int {
+func findRightBound[K cmp.Ordered, V any](l []ListItem[K, V], key K) int {
 	// 使用 sort.Search 查找第一个 Key > key 的元素的索引
 	idx := sort.Search(len(l), func(i int) bool {
 		return l[i].Key > key
@@ -66,7 +60,7 @@ func findRightBound[K Ordered, V any](l []ListItem[K, V], key K) int {
 //	obj - 原始单值查找函数
 //
 // 返回包装后的多值查找函数。
-func PickOneWrapper[K Ordered, V any](obj func(K, []ListItem[K, V]) (res V, ok bool)) func(K, []ListItem[K, V]) []V {
+func PickOneWrapper[K cmp.Ordered, V any](obj func(K, []ListItem[K, V]) (res V, ok bool)) func(K, []ListItem[K, V]) []V {
 	return func(k K, li []ListItem[K, V]) []V {
 		if val, ok := obj(k, li); ok {
 			return []V{val}
@@ -86,7 +80,7 @@ func PickOneWrapper[K Ordered, V any](obj func(K, []ListItem[K, V]) (res V, ok b
 //
 //	res - 找到的元素值
 //	ok  - 是否找到有效元素
-func GE[K Ordered, V any](key K, l []ListItem[K, V]) (res V, ok bool) {
+func GE[K cmp.Ordered, V any](key K, l []ListItem[K, V]) (res V, ok bool) {
 	idx := findLeftBound(l, key)
 	if idx < len(l) {
 		return l[idx].Val, true
@@ -97,7 +91,7 @@ func GE[K Ordered, V any](key K, l []ListItem[K, V]) (res V, ok bool) {
 
 // LE 二分查找获取最后一个小于等于key的元素。
 // 参数说明同GE函数。
-func LE[K Ordered, V any](key K, l []ListItem[K, V]) (res V, ok bool) {
+func LE[K cmp.Ordered, V any](key K, l []ListItem[K, V]) (res V, ok bool) {
 	idx := findRightBound(l, key)
 	if idx >= 0 {
 		return l[idx].Val, true
@@ -108,7 +102,7 @@ func LE[K Ordered, V any](key K, l []ListItem[K, V]) (res V, ok bool) {
 
 // GEs 二分查找获取所有大于等于key的元素。
 // 参数和返回值同GE函数。
-func GEs[K Ordered, V any](key K, l []ListItem[K, V]) (res []V) {
+func GEs[K cmp.Ordered, V any](key K, l []ListItem[K, V]) (res []V) {
 	idx := findLeftBound(l, key)
 	for _, item := range l[idx:] {
 		res = append(res, item.Val)
@@ -119,7 +113,7 @@ func GEs[K Ordered, V any](key K, l []ListItem[K, V]) (res []V) {
 
 // LEs 二分查找获取所有小于等于key的元素。
 // 参数和返回值同GE函数。
-func LEs[K Ordered, V any](key K, l []ListItem[K, V]) (res []V) {
+func LEs[K cmp.Ordered, V any](key K, l []ListItem[K, V]) (res []V) {
 	idx := findRightBound(l, key)
 	if idx >= 0 {
 		for _, item := range l[:idx+1] {
@@ -136,7 +130,7 @@ func LEs[K Ordered, V any](key K, l []ListItem[K, V]) (res []V) {
 //	left  - 区间左边界(包含)
 //	right - 区间右边界(不包含)
 //	l     - 已排序的ListItem切片
-func InRange[K Ordered, V any](left, right K, l []ListItem[K, V]) (res []V) {
+func InRange[K cmp.Ordered, V any](left, right K, l []ListItem[K, V]) (res []V) {
 	leftIdx := findLeftBound(l, left)
 	rightIdx := findLeftBound(l, right)
 	for _, item := range l[leftIdx:rightIdx] {
@@ -167,7 +161,7 @@ func groupBy[K comparable, V any](l []V, key func(V) K) (res map[K][]V) {
 // 1. 按分组键对数据进行分组
 // 2. 对分组键进行排序
 // 3. 为每个分组构建排序列表项。
-func BuildSortedNodeData[K Ordered, Q, D any](list []D, key func(D) K, next BuildNode[Q, D]) (data []ListItem[K, Node[Q, D]]) {
+func BuildSortedNodeData[K cmp.Ordered, Q, D any](list []D, key func(D) K, next BuildNode[Q, D]) (data []ListItem[K, Node[Q, D]]) {
 	group := groupBy(list, key)
 	keys := make([]K, 0, len(group))
 	for k := range group {
@@ -201,7 +195,7 @@ func BuildMapNodeData[K comparable, Q, D any](list []D, key func(D) K, next Buil
 
 // SortedNode 排序节点，用于构建有序查询结构。
 // K 排序键类型，Q 查询条件类型，D 数据类型。
-type SortedNode[K Ordered, Q, D any] struct {
+type SortedNode[K cmp.Ordered, Q, D any] struct {
 	NodeBase[Q, D]
 
 	Pick func(Q, []ListItem[K, Node[Q, D]]) []Node[Q, D]
@@ -288,7 +282,7 @@ func UniqueMapNode[K comparable, Q, D any](queryKey func(Q) K, groupKey func(D) 
 //	groupKey   - 从数据中提取分组键的函数
 //
 // 返回配置好的SortedNode实例。
-func UniqueSortedNode[K Ordered, Q, D any](queryKey func(Q) K, queryFunc func(K, []ListItem[K, Node[Q, D]]) (Node[Q, D], bool), groupKey func(D) K) *SortedNode[K, Q, D] {
+func UniqueSortedNode[K cmp.Ordered, Q, D any](queryKey func(Q) K, queryFunc func(K, []ListItem[K, Node[Q, D]]) (Node[Q, D], bool), groupKey func(D) K) *SortedNode[K, Q, D] {
 	return &SortedNode[K, Q, D]{
 		GroupKey: groupKey,
 		Pick: func(q Q, li []ListItem[K, Node[Q, D]]) []Node[Q, D] {
