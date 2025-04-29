@@ -1,10 +1,11 @@
 package example
 
 import (
-	"github.com/EAFA0/Tobiichi/parallel"
 	"context"
 	"fmt"
 	"sync"
+
+	"github.com/EAFA0/Tool/parallel"
 )
 
 // just a example
@@ -41,12 +42,10 @@ func ParallelAction(ctx context.Context, params []Param) ([]Result, error) {
 
 // wrapperParallelAction
 func wrapperParallelAction(ctx context.Context, params []Param, action func(Param) error) error {
-	line, supplier := parallel.NewLine(2), make(chan interface{})
+	line, supplier := parallel.NewLine[Param](2), make(chan Param)
 
 	// wrapper action and execute.
-	line.Run(ctx, supplier, func(param interface{}) error {
-		return action(param.(Param))
-	})
+	line.Run(ctx, supplier, action)
 
 	// Pass parameters.
 	for _, param := range params {
