@@ -95,7 +95,12 @@ func (p DefaultParser) Json() string {
 }
 
 func NewComparator(parser Parser, opts ...Option) Comparator {
-	temp := Comparator{parser: parser}
+	temp := Comparator{
+		parser:  parser,
+		include: make(map[string]None),
+		exclude: make(map[string]None),
+		pathMap: make(map[string]string),
+	}
 	for _, opt := range opts {
 		if opt == nil {
 			continue
