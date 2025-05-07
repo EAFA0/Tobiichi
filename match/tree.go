@@ -1,43 +1,49 @@
 // 使用字典树构建的匹配算法
 package tree
 
-// Node 定义字典树节点接口，用于实现条件匹配算法。
-// Q: 查询条件类型 D: 数据存储类型。
+// Node defines the interface for a trie node used in conditional matching algorithms.
+// Q represents the query type, and D represents the data storage type.
 type Node[Q, D any] interface {
-	Next(query Q) []Node[Q, D] // 继续查找下一条件
+	// Next retrieves the next set of nodes based on the query.
+	Next(query Q) []Node[Q, D]
+	// Leaf checks if the node is a leaf and retrieves its data.
 	Leaf() ([]D, bool)
 }
 
-// EmptyNode 空节点实现，作为叶子节点的终止标识。
-// 不包含实际数据，用于终止匹配流程。
+// EmptyNode represents a terminal node in the trie with no data.
+// It serves as a marker for the end of a matching process.
 type EmptyNode[Q, D any] struct{}
 
 func (n EmptyNode[Q, D]) Leaf() ([]D, bool) {
-	return nil, false // 空节点无数据
+	return nil, false // Empty nodes have no data.
 }
 
-// NodeBuilder 节点构建器接口，负责组织节点构建逻辑。
-// 实现类需要管理子节点构建过程和数据分发规则。
+// NodeBuilder defines the interface for constructing trie nodes.
+// Implementations manage the process of building child nodes and distributing data.
 type NodeBuilder[Q, D any] interface {
-	Load(data []D) NodeBuilder[Q, D]                 // 加载节点数据
-	Push(next NodeBuilder[Q, D]) []NodeBuilder[Q, D] // 下推构建节点, 为空时说明构造完成
-	Node() Node[Q, D]                                // 返回构建好的节点实例
+	// Load initializes the builder with data.
+	Load(data []D) NodeBuilder[Q, D]
+	// Push adds a child node builder and returns the updated list of builders.
+	Push(next NodeBuilder[Q, D]) []NodeBuilder[Q, D]
+	// Node finalizes and returns the constructed node.
+	Node() Node[Q, D]
 }
 
-// DataNode 数据存储节点，用于保存最终匹配结果。
-// S 查询条件类型，T 数据类型。
+// DataNode represents a terminal node that stores data.
+// Q is the query type, and D is the data type.
 type DataNode[Q, D any] struct {
 	Data []D
 }
 
 func (n DataNode[Q, D]) Next(query Q) []Node[Q, D] {
-	return nil // 数据节点无下一节点
+	return nil // Data nodes have no child nodes.
 }
 
 func (n DataNode[Q, D]) Leaf() ([]D, bool) {
 	return n.Data, len(n.Data) != 0
 }
 
+// DataNodeBuilder is a builder for creating DataNode instances.
 type DataNodeBuilder[Q, D any] struct {
 	Data []D
 }
@@ -54,22 +60,23 @@ func (n DataNodeBuilder[Q, D]) Node() Node[Q, D] {
 	return DataNode[Q, D](n)
 }
 
-// Build 构造节点链，根据构建器顺序反向链接节点。
-// 参数:
+// Build constructs a chain of nodes based on the provided builders.
+// The builders are linked in reverse order, starting from the last one.
 //
-//	list - 初始数据集合
-//	order - 节点构建器列表(构建顺序从后往前链接)
+// Parameters:
+// - list: Initial dataset.
+// - builder: List of node builders in reverse order.
 //
-// 返回根节点，启动匹配流程的入口。
+// Returns the root node, which serves as the entry point for the matching process.
 func Build[Q, D any](list []D, builder []NodeBuilder[Q, D]) Node[Q, D] {
-	// append 一个数据节点
+	// Append a DataNodeBuilder to the builder list.
 	copyBuilder := make([]NodeBuilder[Q, D], len(builder))
 	copy(copyBuilder, builder)
 	builder = append(copyBuilder, DataNodeBuilder[Q, D]{})
 
-	// 构建根节点, 只有根节点需要 load 数据
+	// Initialize the root builder with the dataset.
 	rootBuilder := builder[0].Load(list)
-	// 分层构建节点树
+	// Build the node tree layer by layer.
 	current := []NodeBuilder[Q, D]{rootBuilder}
 	for _, nextBuilder := range builder[1:] {
 		next := make([]NodeBuilder[Q, D], 0, len(current))
@@ -79,17 +86,17 @@ func Build[Q, D any](list []D, builder []NodeBuilder[Q, D]) Node[Q, D] {
 		}
 		current = next
 	}
-	// 返回顶层节点树
+	// Return the root node.
 	return rootBuilder.Node()
 }
 
-// Search 执行广度优先搜索(BFS)，遍历匹配节点链。
-// 参数:
+// Search performs a breadth-first search (BFS) to traverse the trie and match nodes.
 //
-//	root - 搜索起始节点
-//	query - 查询条件对象
+// Parameters:
+// - root: Starting node for the search.
+// - query: Query object used for matching.
 //
-// 返回所有匹配节点中存储的数据集合。
+// Returns a collection of data stored in the matching nodes.
 func Search[Query, Data any](root Node[Query, Data], query Query) (res []Data) {
 	queue := []Node[Query, Data]{root}
 	for ; len(queue) > 0; queue = queue[1:] {

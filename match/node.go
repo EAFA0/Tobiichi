@@ -8,34 +8,34 @@ import (
 	"sort"
 )
 
-// ListItem 定义了列表项的结构，包含一个可排序的键和一个任意类型的值。
+// ListItem defines a structure for list items, containing a sortable key and a value of any type.
+// K is the type of the key, which must be ordered, and V is the type of the value.
 type ListItem[K cmp.Ordered, V any] struct {
 	Key K
 	Val V
 }
 
+// findLeftBound performs a binary search to find the index of the first element in the list
+// where the key is greater than or equal to the specified key.
 func findLeftBound[K cmp.Ordered, V any](l []ListItem[K, V], key K) int {
-	// 使用 sort.Search 查找第一个 Key >= key 的元素的索引
 	return sort.Search(len(l), func(i int) bool {
 		return l[i].Key >= key
 	})
 }
 
+// findRightBound performs a binary search to find the index of the last element in the list
+// where the key is less than or equal to the specified key.
 func findRightBound[K cmp.Ordered, V any](l []ListItem[K, V], key K) int {
-	// 使用 sort.Search 查找第一个 Key > key 的元素的索引
 	idx := sort.Search(len(l), func(i int) bool {
 		return l[i].Key > key
 	})
-	// 返回前一个元素的索引，即最后一个 Key <= key 的元素的索引
 	return idx - 1
 }
 
-// PickOneWrapper 将单值查找函数包装为多值返回函数。
-// 参数:
-//
-//	obj - 原始单值查找函数
-//
-// 返回包装后的多值查找函数。
+// PickOneWrapper wraps a single-value lookup function into a multi-value return function.
+// Parameters:
+// - obj: The original single-value lookup function.
+// Returns a function that returns a slice of values.
 func PickOneWrapper[K cmp.Ordered, V any](obj func(K, []ListItem[K, V]) (res V, ok bool)) func(K, []ListItem[K, V]) []V {
 	return func(k K, li []ListItem[K, V]) []V {
 		if val, ok := obj(k, li); ok {
@@ -46,16 +46,8 @@ func PickOneWrapper[K cmp.Ordered, V any](obj func(K, []ListItem[K, V]) (res V, 
 	}
 }
 
-// GE 二分查找获取第一个大于等于key的元素。
-// 参数:
-//
-//	key - 查找的键值
-//	l   - 已排序的ListItem切片
-//
-// 返回值:
-//
-//	res - 找到的元素值
-//	ok  - 是否找到有效元素
+// GE performs a binary search to find the first element in the list
+// where the key is greater than or equal to the specified key.
 func GE[K cmp.Ordered, V any](key K, l []ListItem[K, V]) (res V, ok bool) {
 	idx := findLeftBound(l, key)
 	if idx < len(l) {
@@ -65,8 +57,8 @@ func GE[K cmp.Ordered, V any](key K, l []ListItem[K, V]) (res V, ok bool) {
 	return
 }
 
-// LE 二分查找获取最后一个小于等于key的元素。
-// 参数说明同GE函数。
+// LE performs a binary search to find the last element in the list
+// where the key is less than or equal to the specified key.
 func LE[K cmp.Ordered, V any](key K, l []ListItem[K, V]) (res V, ok bool) {
 	idx := findRightBound(l, key)
 	if idx >= 0 {
@@ -76,8 +68,7 @@ func LE[K cmp.Ordered, V any](key K, l []ListItem[K, V]) (res V, ok bool) {
 	return
 }
 
-// GEs 二分查找获取所有大于等于key的元素。
-// 参数和返回值同GE函数。
+// GEs retrieves all elements in the list where the key is greater than or equal to the specified key.
 func GEs[K cmp.Ordered, V any](key K, l []ListItem[K, V]) (res []V) {
 	idx := findLeftBound(l, key)
 	for _, item := range l[idx:] {
@@ -87,8 +78,7 @@ func GEs[K cmp.Ordered, V any](key K, l []ListItem[K, V]) (res []V) {
 	return
 }
 
-// LEs 二分查找获取所有小于等于key的元素。
-// 参数和返回值同GE函数。
+// LEs retrieves all elements in the list where the key is less than or equal to the specified key.
 func LEs[K cmp.Ordered, V any](key K, l []ListItem[K, V]) (res []V) {
 	idx := findRightBound(l, key)
 	if idx >= 0 {
@@ -100,12 +90,7 @@ func LEs[K cmp.Ordered, V any](key K, l []ListItem[K, V]) (res []V) {
 	return
 }
 
-// InRange 范围查找获取[left, right)区间内的所有元素。
-// 参数:
-//
-//	left  - 区间左边界(包含)
-//	right - 区间右边界(不包含)
-//	l     - 已排序的ListItem切片
+// InRange retrieves all elements in the list where the key is within the range [left, right).
 func InRange[K cmp.Ordered, V any](left, right K, l []ListItem[K, V]) (res []V) {
 	leftIdx := findLeftBound(l, left)
 	rightIdx := findLeftBound(l, right)
@@ -116,13 +101,11 @@ func InRange[K cmp.Ordered, V any](left, right K, l []ListItem[K, V]) (res []V) 
 	return
 }
 
-// groupBy 数据分组工具函数。
-// 参数:
-//
-//	l   - 原始数据列表
-//	key - 分组键提取函数
-//
-// 返回按分组键组织的map。
+// groupBy groups a list of items by a specified key extraction function.
+// Parameters:
+// - l: The original list of items.
+// - key: A function to extract the grouping key from each item.
+// Returns a map where the keys are the extracted keys and the values are slices of items.
 func groupBy[K comparable, V any](l []V, key func(V) K) (res map[K][]V) {
 	res = make(map[K][]V)
 	for _, item := range l {
@@ -132,6 +115,8 @@ func groupBy[K comparable, V any](l []V, key func(V) K) (res map[K][]V) {
 	return
 }
 
+// SortedNodeBuilder is a builder for creating SortedNode instances.
+// It organizes data into a sorted structure and builds child nodes.
 type SortedNodeBuilder[K cmp.Ordered, Q, D any] struct {
 	Pick     func(Q, []ListItem[K, Node[Q, D]]) []Node[Q, D]
 	GroupKey func(D) K
@@ -162,6 +147,7 @@ func (s SortedNodeBuilder[K, Q, D]) Load(list []D) NodeBuilder[Q, D] {
 	}
 }
 
+// Push adds child node builders to the current builder and returns the updated list of builders.
 func (s SortedNodeBuilder[K, Q, D]) Push(next NodeBuilder[Q, D]) []NodeBuilder[Q, D] {
 	for index, elem := range s.data {
 		s.next[index] = next.Load(elem.Val)
@@ -169,6 +155,7 @@ func (s SortedNodeBuilder[K, Q, D]) Push(next NodeBuilder[Q, D]) []NodeBuilder[Q
 	return s.next
 }
 
+// Node finalizes and returns the constructed SortedNode.
 func (s SortedNodeBuilder[K, Q, D]) Node() Node[Q, D] {
 	data := make([]ListItem[K, Node[Q, D]], len(s.data))
 	for i, elem := range s.data {
@@ -184,18 +171,19 @@ func (s SortedNodeBuilder[K, Q, D]) Node() Node[Q, D] {
 	}
 }
 
-// SortedNode 排序节点，用于构建有序查询结构。
-// K 排序键类型，Q 查询条件类型，D 数据类型。
 type SortedNode[K cmp.Ordered, Q, D any] struct {
 	EmptyNode[Q, D]
 	Data []ListItem[K, Node[Q, D]]
 	Pick func(Q, []ListItem[K, Node[Q, D]]) []Node[Q, D]
 }
 
+// Next retrieves the next set of nodes based on the query for a SortedNode.
 func (n SortedNode[K, Q, D]) Next(query Q) []Node[Q, D] {
 	return n.Pick(query, n.Data)
 }
 
+// MapNodeBuilder is a builder for creating MapNode instances.
+// It organizes data into a map structure and builds child nodes.
 type MapNodeBuilder[K comparable, Q, D any] struct {
 	Pick     func(Q, map[K]Node[Q, D]) []Node[Q, D]
 	GroupKey func(D) K
@@ -213,6 +201,7 @@ func (m MapNodeBuilder[K, Q, D]) Load(list []D) NodeBuilder[Q, D] {
 	}
 }
 
+// Push adds child node builders to the current builder and returns the updated list of builders.
 func (m MapNodeBuilder[K, Q, D]) Push(next NodeBuilder[Q, D]) []NodeBuilder[Q, D] {
 	for k, elem := range m.data {
 		m.next[k] = next.Load(elem)
@@ -223,6 +212,8 @@ func (m MapNodeBuilder[K, Q, D]) Push(next NodeBuilder[Q, D]) []NodeBuilder[Q, D
 	}
 	return nextBuilder
 }
+
+// Node finalizes and returns the constructed MapNode.
 func (m MapNodeBuilder[K, Q, D]) Node() Node[Q, D] {
 	data := make(map[K]Node[Q, D], len(m.data))
 	for k := range m.data {
@@ -234,30 +225,19 @@ func (m MapNodeBuilder[K, Q, D]) Node() Node[Q, D] {
 	}
 }
 
-// MapNode 哈希映射节点，用于快速键值查找。
-// K 可比较键类型，Q 查询条件类型，D 数据类型。
 type MapNode[K comparable, Q, D any] struct {
 	EmptyNode[Q, D]
 	Data map[K]Node[Q, D]
 	Pick func(Q, map[K]Node[Q, D]) []Node[Q, D]
 }
 
+// Next retrieves the next set of nodes based on the query for a MapNode.
 func (n MapNode[K, Q, D]) Next(query Q) []Node[Q, D] {
 	return n.Pick(query, n.Data)
 }
 
-// UniqueMapNode 创建一个唯一映射节点，用于处理具有唯一键的映射结构。
-// 它接受两个函数作为参数：
-// - queryKey: 一个函数，用于从查询对象 Q 中提取键 K。
-// - groupKey: 一个函数，用于从数据对象 D 中提取键 K。
-// 返回一个 MapNode 实例，该实例使用 PickOneInMap 函数来选择节点。
-// UniqueMapNode 创建唯一映射节点。
-// 参数:
-//
-//	queryKey  - 从查询条件中提取键的函数
-//	groupKey  - 从数据中提取分组键的函数
-//
-// 返回配置好的MapNode实例。
+// UniqueMapNode creates a MapNodeBuilder for unique key mappings.
+// It uses queryKey to extract keys from queries and groupKey to extract keys from data.
 func UniqueMapNode[K comparable, Q, D any](queryKey func(Q) K, groupKey func(D) K) MapNodeBuilder[K, Q, D] {
 	return MapNodeBuilder[K, Q, D]{
 		GroupKey: groupKey,
@@ -271,20 +251,8 @@ func UniqueMapNode[K comparable, Q, D any](queryKey func(Q) K, groupKey func(D) 
 	}
 }
 
-// UniqueSortedNode 创建一个唯一排序节点，用于处理具有唯一键的排序结构。
-// 它接受三个函数作为参数：
-// - queryKey: 一个函数，用于从查询对象 Q 中提取键 K。
-// - queryFunc: 一个函数，用于根据键 K 从排序列表中查找节点，并返回找到的节点和是否找到的布尔值。
-// - groupKey: 一个函数，用于从数据对象 D 中提取键 K。
-// 返回一个 SortedNode 实例，该实例使用 PickOneInArray 函数来选择节点。
-// UniqueSortedNode 创建唯一排序节点。
-// 参数:
-//
-//	queryKey   - 从查询条件中提取键的函数
-//	queryFunc  - 在排序列表中查找节点的函数
-//	groupKey   - 从数据中提取分组键的函数
-//
-// 返回配置好的SortedNode实例。
+// UniqueSortedNode creates a SortedNodeBuilder for unique key mappings in a sorted structure.
+// It uses queryKey to extract keys from queries, queryFunc to find nodes in the sorted list, and groupKey to extract keys from data.
 func UniqueSortedNode[K cmp.Ordered, Q, D any](queryKey func(Q) K, queryFunc func(K, []ListItem[K, Node[Q, D]]) (Node[Q, D], bool), groupKey func(D) K) SortedNodeBuilder[K, Q, D] {
 	return SortedNodeBuilder[K, Q, D]{
 		GroupKey: groupKey,
