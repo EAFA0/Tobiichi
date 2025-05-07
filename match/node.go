@@ -8,30 +8,6 @@ import (
 	"sort"
 )
 
-// DataNode 数据存储节点，用于保存最终匹配结果。
-// S 查询条件类型，T 数据类型。
-type DataNode[Q, D any] struct {
-	Data []D
-}
-
-func (n DataNode[Q, D]) Next(query Q) []Node[Q, D] {
-	return nil // 数据节点无下一节点
-}
-
-func (n DataNode[Q, D]) Leaf() ([]D, bool) {
-	return n.Data, len(n.Data) != 0
-}
-
-func (n DataNode[Q, D]) Build(list []D) Node[Q, D] {
-	return DataNode[Q, D]{
-		Data: list,
-	}
-}
-
-func (n DataNode[Q, D]) SetNext(next BuildNode[Q, D]) {
-	// 数据节点无下一节点
-}
-
 // ListItem 定义了列表项的结构，包含一个可排序的键和一个任意类型的值。
 type ListItem[K cmp.Ordered, V any] struct {
 	Key K
@@ -156,13 +132,15 @@ func groupBy[K comparable, V any](l []V, key func(V) K) (res map[K][]V) {
 	return
 }
 
-// BuildSortedNodeData 构建有序节点数据。
-// 流程:
-// 1. 按分组键对数据进行分组
-// 2. 对分组键进行排序
-// 3. 为每个分组构建排序列表项。
-func BuildSortedNodeData[K cmp.Ordered, Q, D any](list []D, key func(D) K, next BuildNode[Q, D]) (data []ListItem[K, Node[Q, D]]) {
-	group := groupBy(list, key)
+type SortedNodeBuilder[K cmp.Ordered, Q, D any] struct {
+	Pick     func(Q, []ListItem[K, Node[Q, D]]) []Node[Q, D]
+	GroupKey func(D) K
+	data     []ListItem[K, []D]
+	next     []NodeBuilder[Q, D]
+}
+
+func (s SortedNodeBuilder[K, Q, D]) Load(list []D) NodeBuilder[Q, D] {
+	group := groupBy(list, s.GroupKey)
 	keys := make([]K, 0, len(group))
 	for k := range group {
 		keys = append(keys, k)
@@ -170,77 +148,102 @@ func BuildSortedNodeData[K cmp.Ordered, Q, D any](list []D, key func(D) K, next 
 	sort.Slice(keys, func(i, j int) bool {
 		return keys[i] < keys[j]
 	})
-
+	data := make([]ListItem[K, []D], 0, len(group))
 	for _, k := range keys {
-		data = append(data, ListItem[K, Node[Q, D]]{
-			Key: k, Val: next(group[k]),
+		data = append(data, ListItem[K, []D]{
+			Key: k, Val: group[k],
 		})
 	}
-
-	return
+	return SortedNodeBuilder[K, Q, D]{
+		next:     make([]NodeBuilder[Q, D], len(data)),
+		data:     data,
+		Pick:     s.Pick,
+		GroupKey: s.GroupKey,
+	}
 }
 
-// BuildMapNodeData 构建哈希映射节点数据。
-// 流程:
-// 1. 按分组键对数据进行分组
-// 2. 为每个分组构建对应的子节点。
-func BuildMapNodeData[K comparable, Q, D any](list []D, key func(D) K, next BuildNode[Q, D]) (data map[K]Node[Q, D]) {
-	data = make(map[K]Node[Q, D], len(list))
-	for k, v := range groupBy(list, key) {
-		data[k] = next(v)
+func (s SortedNodeBuilder[K, Q, D]) Push(next NodeBuilder[Q, D]) []NodeBuilder[Q, D] {
+	for index, elem := range s.data {
+		s.next[index] = next.Load(elem.Val)
+	}
+	return s.next
+}
+
+func (s SortedNodeBuilder[K, Q, D]) Node() Node[Q, D] {
+	data := make([]ListItem[K, Node[Q, D]], len(s.data))
+	for i, elem := range s.data {
+		data[i] = ListItem[K, Node[Q, D]]{
+			Key: elem.Key,
+			Val: s.next[i].Node(),
+		}
 	}
 
-	return
+	return SortedNode[K, Q, D]{
+		Pick: s.Pick,
+		Data: data,
+	}
 }
 
 // SortedNode 排序节点，用于构建有序查询结构。
 // K 排序键类型，Q 查询条件类型，D 数据类型。
 type SortedNode[K cmp.Ordered, Q, D any] struct {
-	NodeBase[Q, D]
-
-	Pick func(Q, []ListItem[K, Node[Q, D]]) []Node[Q, D]
+	EmptyNode[Q, D]
 	Data []ListItem[K, Node[Q, D]]
-
-	GroupKey func(D) K
+	Pick func(Q, []ListItem[K, Node[Q, D]]) []Node[Q, D]
 }
 
 func (n SortedNode[K, Q, D]) Next(query Q) []Node[Q, D] {
 	return n.Pick(query, n.Data)
 }
 
-func (n SortedNode[K, Q, D]) Build(list []D) Node[Q, D] {
-	return SortedNode[K, Q, D]{
-		Data: BuildSortedNodeData(list, n.GroupKey, n.NextBuilder()),
+type MapNodeBuilder[K comparable, Q, D any] struct {
+	Pick     func(Q, map[K]Node[Q, D]) []Node[Q, D]
+	GroupKey func(D) K
+	data     map[K][]D
+	next     map[K]NodeBuilder[Q, D]
+}
 
-		NodeBase: n.NodeBase,
-		GroupKey: n.GroupKey,
-		Pick:     n.Pick,
+func (m MapNodeBuilder[K, Q, D]) Load(list []D) NodeBuilder[Q, D] {
+	group := groupBy(list, m.GroupKey)
+	return MapNodeBuilder[K, Q, D]{
+		next:     make(map[K]NodeBuilder[Q, D], len(group)),
+		data:     group,
+		Pick:     m.Pick,
+		GroupKey: m.GroupKey,
+	}
+}
+
+func (m MapNodeBuilder[K, Q, D]) Push(next NodeBuilder[Q, D]) []NodeBuilder[Q, D] {
+	for k, elem := range m.data {
+		m.next[k] = next.Load(elem)
+	}
+	nextBuilder := make([]NodeBuilder[Q, D], 0, len(m.data))
+	for _, elem := range m.next {
+		nextBuilder = append(nextBuilder, elem)
+	}
+	return nextBuilder
+}
+func (m MapNodeBuilder[K, Q, D]) Node() Node[Q, D] {
+	data := make(map[K]Node[Q, D], len(m.data))
+	for k := range m.data {
+		data[k] = m.next[k].Node()
+	}
+	return MapNode[K, Q, D]{
+		Data: data,
+		Pick: m.Pick,
 	}
 }
 
 // MapNode 哈希映射节点，用于快速键值查找。
 // K 可比较键类型，Q 查询条件类型，D 数据类型。
 type MapNode[K comparable, Q, D any] struct {
-	NodeBase[Q, D]
-
+	EmptyNode[Q, D]
 	Data map[K]Node[Q, D]
 	Pick func(Q, map[K]Node[Q, D]) []Node[Q, D]
-
-	GroupKey func(D) K
 }
 
 func (n MapNode[K, Q, D]) Next(query Q) []Node[Q, D] {
 	return n.Pick(query, n.Data)
-}
-
-func (n MapNode[K, Q, D]) Build(list []D) Node[Q, D] {
-	return MapNode[K, Q, D]{
-		Data: BuildMapNodeData(list, n.GroupKey, n.NextBuilder()),
-
-		NodeBase: n.NodeBase,
-		GroupKey: n.GroupKey,
-		Pick:     n.Pick,
-	}
 }
 
 // UniqueMapNode 创建一个唯一映射节点，用于处理具有唯一键的映射结构。
@@ -255,8 +258,8 @@ func (n MapNode[K, Q, D]) Build(list []D) Node[Q, D] {
 //	groupKey  - 从数据中提取分组键的函数
 //
 // 返回配置好的MapNode实例。
-func UniqueMapNode[K comparable, Q, D any](queryKey func(Q) K, groupKey func(D) K) *MapNode[K, Q, D] {
-	return &MapNode[K, Q, D]{
+func UniqueMapNode[K comparable, Q, D any](queryKey func(Q) K, groupKey func(D) K) MapNodeBuilder[K, Q, D] {
+	return MapNodeBuilder[K, Q, D]{
 		GroupKey: groupKey,
 		Pick: func(q Q, m map[K]Node[Q, D]) []Node[Q, D] {
 			if val, ok := m[queryKey(q)]; ok {
@@ -282,8 +285,8 @@ func UniqueMapNode[K comparable, Q, D any](queryKey func(Q) K, groupKey func(D) 
 //	groupKey   - 从数据中提取分组键的函数
 //
 // 返回配置好的SortedNode实例。
-func UniqueSortedNode[K cmp.Ordered, Q, D any](queryKey func(Q) K, queryFunc func(K, []ListItem[K, Node[Q, D]]) (Node[Q, D], bool), groupKey func(D) K) *SortedNode[K, Q, D] {
-	return &SortedNode[K, Q, D]{
+func UniqueSortedNode[K cmp.Ordered, Q, D any](queryKey func(Q) K, queryFunc func(K, []ListItem[K, Node[Q, D]]) (Node[Q, D], bool), groupKey func(D) K) SortedNodeBuilder[K, Q, D] {
+	return SortedNodeBuilder[K, Q, D]{
 		GroupKey: groupKey,
 		Pick: func(q Q, li []ListItem[K, Node[Q, D]]) []Node[Q, D] {
 			return PickOneWrapper(queryFunc)(queryKey(q), li)
